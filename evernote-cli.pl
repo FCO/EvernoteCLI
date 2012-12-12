@@ -1,13 +1,18 @@
 use App::Rad;
+use File::HomeDir;
 use ENClient;
+use HTML::Escape qw/escape_html/;
 
 App::Rad->run;
 
 sub setup {
 	my $c = shift;
+	my $home = File::HomeDir->my_home;
 	$c->register(run 	=> \&run);
-	$c->register(history 	=> \&history);
-	$c->load_config("$ENV{HOME}/.evernoteclirc");
+	$c->register(text 	=> \&text);
+	$c->register(man 	=> \&man);
+
+	$c->load_config("$home/.evernoteclirc");
 	die "Please, get a auth token on https://sandbox.evernote.com/api/DeveloperToken.action (if you want to test on a sandbox) and fill the auth_token field on your conf file." unless exists $c->config->{auth_token};
 	$c->stash->{auth_token} = $c->config->{auth_token};
 }
@@ -19,10 +24,30 @@ sub run :Help(Send the return of a command to evernote) {
 	_create_note($c->stash->{auth_token}, $command, $return)
 }
 
+sub man :Help(Send the man page to evernote) {
+	my $c = shift;
+	my $command = shift @ARGV;
+	my $return  = qx/man $command/;
+	_create_note($c->stash->{auth_token}, "man $command", $return)
+}
+
+sub text :Help(Send the stdio to evernote) {
+	my $c = shift;
+	my $title = join " ", @ARGV;
+	@ARGV = ();
+	my $body;
+	while(my $line = <>) {
+		last if $line =~ /^\n*$/;
+		$body .= $line;
+	}
+	print "OK$/";
+	_create_note($c->stash->{auth_token}, $title, $body)
+}
+
 sub _create_note {
 	my $auth_token = shift;
 	my $title = shift;
-	my $body  = shift;
+	my $body  = escape_html(shift);
 	my @files = @_;
 
 	my $enclient = ENClient->new;

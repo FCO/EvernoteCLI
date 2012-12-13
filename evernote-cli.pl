@@ -1,4 +1,6 @@
 #!/usr/bin/env perl
+use strict;
+use warnings;
 
 use lib "lib";
 use Scalar::Util qw/blessed/;
@@ -12,8 +14,6 @@ use File::HomeDir;
 use HTML::Entities;
 use HTML::Escape qw/escape_html/;
 
-App::Rad->run;
-
 sub setup {
 	my $c = shift;
 	my $home = File::HomeDir->my_home;
@@ -26,18 +26,27 @@ sub setup {
 	$c->stash->{auth_token} = $c->config->{auth_token};
 }
 
+sub post_process {
+	my $c = shift;
+	if($c->cmd && $c->cmd ne "help") {
+		print $c->_success_msg($c->output)
+	} else {
+		print $c->output, $/
+	}
+}
+
 sub run :Help(Send the return of a command to evernote) {
 	my $c = shift;
 	my $command = join " ", @ARGV;
 	my $return  = qx/$command/;
-	_create_note($c->stash->{auth_token}, $command, $return)
+	$c->_create_note($c->stash->{auth_token}, $command, $return)
 }
 
 sub man :Help(Send the man page to evernote) {
 	my $c = shift;
 	my $command = shift @ARGV;
 	my $return  = qx/man -P cat $command/;
-	_create_note($c->stash->{auth_token}, "man $command", $return)
+	$c->_create_note($c->stash->{auth_token}, "man $command", $return)
 }
 
 sub text :Help(Send the stdio to evernote) {
@@ -49,10 +58,17 @@ sub text :Help(Send the stdio to evernote) {
 		#last if $line =~ /^\n*$/;
 		$body .= $line;
 	}
-	_create_note($c->stash->{auth_token}, $title, $body)
+	$c->_create_note($c->stash->{auth_token}, $title, $body)
 }
 
-sub _create_note {
+*App::Rad::_success_msg = sub {
+	my $c    = shift;
+	my $note = shift;
+	sprintf "Successfully created a new note with GUID: %s\n", $note->guid;
+};
+
+*App::Rad::_create_note = sub {
+	my $c = shift;
 	my $auth_token = shift;
 	my $title = shift;
 	my $body  = decode_entities(shift);
@@ -67,7 +83,7 @@ sub _create_note {
 	
 	my $note = EDAMTypes::Note->new();
 	
-	$note->title( $title );
+	$note->title( exists($c->options->{title}) ? $c->options->{title} :  $title );
 	
 	$note->content(<<"FIM");
 <?xml version="1.0" encoding="UTF-8"?>
@@ -78,6 +94,7 @@ $body
   </pre>
 </en-note>
 FIM
-	my $created_note = $enclient->note_store->createNote( $enclient->auth_token, $note );
-	sprintf "Successfully created a new note with GUID: %s\n", $created_note->guid;
-}
+	$enclient->note_store->createNote( $enclient->auth_token, $note );
+};
+
+App::Rad->run;

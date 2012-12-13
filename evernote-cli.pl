@@ -49,7 +49,6 @@ sub text :Help(Send the stdio to evernote) {
 		#last if $line =~ /^\n*$/;
 		$body .= $line;
 	}
-	print "OK$/";
 	_create_note($c->stash->{auth_token}, $title, $body)
 }
 

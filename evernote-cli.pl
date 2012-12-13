@@ -1,6 +1,15 @@
+#!/usr/bin/env perl
+
+use lib "lib";
+use Scalar::Util qw/blessed/;
+local $SIG{__DIE__} = sub {
+	my $err = shift;
+	print STDERR blessed $err ? $err->{parameter} : $err;
+};
+use ENClient;
 use App::Rad;
 use File::HomeDir;
-use ENClient;
+use HTML::Entities;
 use HTML::Escape qw/escape_html/;
 
 App::Rad->run;
@@ -27,7 +36,7 @@ sub run :Help(Send the return of a command to evernote) {
 sub man :Help(Send the man page to evernote) {
 	my $c = shift;
 	my $command = shift @ARGV;
-	my $return  = qx/man $command/;
+	my $return  = qx/man -P cat $command/;
 	_create_note($c->stash->{auth_token}, "man $command", $return)
 }
 
@@ -37,7 +46,7 @@ sub text :Help(Send the stdio to evernote) {
 	@ARGV = ();
 	my $body;
 	while(my $line = <>) {
-		last if $line =~ /^\n*$/;
+		#last if $line =~ /^\n*$/;
 		$body .= $line;
 	}
 	print "OK$/";
@@ -47,9 +56,11 @@ sub text :Help(Send the stdio to evernote) {
 sub _create_note {
 	my $auth_token = shift;
 	my $title = shift;
-	my $body  = escape_html(shift);
+	my $body  = decode_entities(shift);
 	my @files = @_;
 
+	$body =~ s/\x{008}//g;
+	$body = escape_html($body);
 	my $enclient = ENClient->new;
 	die "Late version..." if not $enclient->check_version;
 

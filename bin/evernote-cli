@@ -1,0 +1,142 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+
+use lib "lib";
+use Scalar::Util qw/blessed/;
+local $SIG{__DIE__} = sub {
+	my $err = shift;
+	print STDERR blessed $err ? $err->{parameter} : $err;
+};
+use ENClient;
+use App::Rad;
+use File::HomeDir;
+use HTML::Entities;
+use HTML::Escape qw/escape_html/;
+use MIME::Types;
+
+sub setup {
+	my $c = shift;
+	my $home = File::HomeDir->my_home;
+	$c->register(run 	=> \&run);
+	$c->register(text 	=> \&text);
+	$c->register(man 	=> \&man);
+	$c->register(file 	=> \&file);
+
+	$c->load_config("$home/.evernoteclirc");
+	die "Please, get a auth token on https://sandbox.evernote.com/api/DeveloperToken.action (if you want to test on a sandbox) and fill the auth_token field on your conf file." unless exists $c->config->{auth_token};
+	$c->stash->{auth_token} = $c->config->{auth_token};
+}
+
+sub post_process {
+	my $c = shift;
+	if($c->cmd && $c->cmd ne "help") {
+		print $c->_success_msg($c->output)
+	} else {
+		print $c->output, $/
+	}
+}
+
+sub run :Help(Send the return of a command to evernote) {
+	my $c = shift;
+	my $command = join " ", @{ $c->argv };
+	my $return  = qx/$command/;
+	$c->_create_note($c->stash->{auth_token}, $command, $return)
+}
+
+sub man :Help(Send the man page to evernote) {
+	my $c = shift;
+	my $command = shift @{ $c->argv };
+	my $return  = qx/man -P cat $command/;
+	$c->_create_note($c->stash->{auth_token}, "man $command", $return)
+}
+
+sub text :Help(Send the stdio to evernote) {
+	my $c = shift;
+	my $title = join " ", @{ $c->argv };
+	@ARGV = ();
+	my $body;
+	while(my $line = <>) {
+		$body .= $line;
+	}
+	$c->_create_note($c->stash->{auth_token}, $title, $body)
+}
+
+sub file :Help(Send files to evernote) {
+	my $c     = shift;
+	my @files = @{ $c->argv };
+
+	$c->_create_note($c->stash->{auth_token}, join(", ", @files), "", @files)
+}
+
+*App::Rad::_success_msg = sub {
+	my $c    = shift;
+	my $note = shift;
+	sprintf "Successfully created a new note with GUID: %s\n", $note->guid;
+};
+
+*App::Rad::_create_note = sub {
+	my $c = shift;
+	my $auth_token = shift;
+	my $title = shift;
+	my $body  = decode_entities(shift);
+	my @files = @_;
+
+	$body =~ s/\x{008}//g;
+	$body = escape_html($body);
+	my $enclient = ENClient->new;
+	die "Late version..." if not $enclient->check_version;
+
+	$enclient->auth_token($auth_token);
+	
+	my $note = EDAMTypes::Note->new();
+	
+	$note->title( exists($c->options->{title}) ? $c->options->{title} :  $title );
+	
+	my $content = <<"FIM";
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE en-note SYSTEM "http://xml.evernote.com/pub/enml2.dtd">
+<en-note>
+FIM
+	if($body) {
+		$content .= <<"FIM";
+<pre style="background-color: black; color: green; font-family: 'Courier New', Courier, monospace">
+$body
+</pre>
+FIM
+	}
+
+	my @resources;
+	my $mime;
+	if(@files) {
+		$mime = MIME::Types->new;
+	}
+	for my $filename(@files) {
+		my $file_bin = do {
+			my $iof = IO::File->new( $filename, '<' )
+				or EDAMTest::Exception::FileIOError->throw( "file open failed: $filename" );
+			$iof->binmode( ':bytes' );
+			do { local $/; <$iof> };
+		};
+    		my $data = EDAMTypes::Data->new();
+    		$data->size( length $file_bin );
+    		$data->bodyHash( Digest::MD5::md5( $file_bin ) );
+    		$data->body( $file_bin );
+
+    		my $resource = EDAMTypes::Resource->new();
+    		my $mimetype = $mime->mimeTypeOf($filename);
+    		$resource->mime( $mimetype );
+    		$resource->data( $data );
+    		$resource->attributes( EDAMTypes::ResourceAttributes->new() );
+    		$resource->attributes->fileName( $filename );
+		push @resources, $resource;
+		my $hash_hex = Digest::MD5::md5_hex( $file_bin );
+		$content .= qq{<div><en-media type="$mimetype" hash="$hash_hex"/></div>};
+	}
+	$content .= "</en-note>";
+	$note->resources(\@resources);
+	$note->content($content);
+	$enclient->note_store->createNote( $enclient->auth_token, $note );
+};
+
+App::Rad->run;

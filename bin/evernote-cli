@@ -14,6 +14,7 @@ use File::HomeDir;
 use HTML::Entities;
 use HTML::Escape qw/escape_html/;
 use MIME::Types;
+use ENResource;
 
 sub setup {
 	my $c = shift;
@@ -112,25 +113,10 @@ FIM
 		$mime = MIME::Types->new;
 	}
 	for my $filename(@files) {
-		my $file_bin = do {
-			my $iof = IO::File->new( $filename, '<' )
-				or EDAMTest::Exception::FileIOError->throw( "file open failed: $filename" );
-			$iof->binmode( ':bytes' );
-			do { local $/; <$iof> };
-		};
-    		my $data = EDAMTypes::Data->new();
-    		$data->size( length $file_bin );
-    		$data->bodyHash( Digest::MD5::md5( $file_bin ) );
-    		$data->body( $file_bin );
-
-    		my $resource = EDAMTypes::Resource->new();
-    		my $mimetype = $mime->mimeTypeOf($filename);
-    		$resource->mime( $mimetype );
-    		$resource->data( $data );
-    		$resource->attributes( EDAMTypes::ResourceAttributes->new() );
-    		$resource->attributes->fileName( $filename );
-		push @resources, $resource;
-		my $hash_hex = Digest::MD5::md5_hex( $file_bin );
+		my $resource = ENResource->new($filename);
+		push @resources, $resource->resource;
+		my $mimetype = $resource->mime;
+		my $hash_hex = $resource->md5_hex;
 		$content .= qq{<div><en-media type="$mimetype" hash="$hash_hex"/></div>};
 	}
 	$content .= "</en-note>";

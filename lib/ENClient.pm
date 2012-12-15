@@ -132,7 +132,6 @@ has note_filter => (
 sub get_note {
 	my $self = shift;
 	my $guid = shift;
-	$guid =~ s/\D//g;
 	$self->note_store->getNote($self->auth_token, $guid, 1)
 }
 

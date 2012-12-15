@@ -33,8 +33,11 @@ sub setup {
 
 sub post_process {
 	my $c = shift;
-	if(blessed($c->output) and $c->output->isa("EDAMNoteStore::NoteMetadata")) {
-		print Dumper $c->output
+	if(blessed($c->output) and $c->output->isa("EDAMTypes::Note")) {
+		#print Dumper $c->output;
+		printf "  %-30s:\t%s$/", $_, $c->output->{$_} for qw/guid created title/;
+		print  "$/content:$/";
+		print  $c->output->{content}, $/, $/
 	} elsif(blessed($c->output)) {
 		print $c->_success_msg($c->output)
 	} elsif(ref $c->output eq "ARRAY") {
@@ -88,7 +91,7 @@ sub search :Help(Search on evernote) {
 
 sub show :Help(Show a note from evernote by GUID) {
 	my $c    = shift;
-	my $guid = shift;
+	my $guid = shift @{ $c->argv };
 
 	$c->_get_note($c->stash->{auth_token}, $guid)
 }

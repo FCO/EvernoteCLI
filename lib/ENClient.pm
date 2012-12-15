@@ -117,6 +117,25 @@ has note_store => (
 	lazy	=> 1,
 );
 
+has note_filter => (
+	is	=> 'rw',
+	isa	=> 'EDAMNoteStore::NoteFilter',
+	default	=> sub{
+		my $self = shift;
+		my $filter = EDAMNoteStore::NoteFilter->new;
+		$filter->order(EDAMTypes::NoteSortOrder::UPDATED);
+		$filter
+	},
+	lazy	=> 1,
+);
+
+sub get_note {
+	my $self = shift;
+	my $guid = shift;
+	$guid =~ s/\D//g;
+	$self->note_store->getNote($self->auth_token, $guid, 1)
+}
+
 sub check_version {
     my $self = shift;
     my $version_ok = $self->user_store->checkVersion(
@@ -126,6 +145,20 @@ sub check_version {
     );
     $version_ok
 };
+
+sub search {
+	my $self       = shift;
+	my $search_str = shift;
+	my @notes;
+
+	my $spec = EDAMNoteStore::NotesMetadataResultSpec->new;
+	$spec->includeTitle(1);
+
+	$self->note_filter->words($search_str);
+	my $notes = $self->note_store->findNotesMetadata($self->auth_token, $self->note_filter, scalar(@notes), 10, $spec);
+	push @notes, @{ $notes->notes } while $notes->totalNotes > @notes;
+	@notes
+}
 
 42;
 

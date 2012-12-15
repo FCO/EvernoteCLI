@@ -23,6 +23,8 @@ sub setup {
 	$c->register(text 	=> \&text);
 	$c->register(man 	=> \&man);
 	$c->register(file 	=> \&file);
+	$c->register(search 	=> \&search);
+	$c->register(show 	=> \&show);
 
 	$c->load_config("$home/.evernoteclirc");
 	die "Please, get a auth token on https://sandbox.evernote.com/api/DeveloperToken.action (if you want to test on a sandbox) and fill the auth_token field on your conf file." unless exists $c->config->{auth_token};
@@ -31,8 +33,15 @@ sub setup {
 
 sub post_process {
 	my $c = shift;
-	if($c->cmd && $c->cmd ne "help") {
+	if(blessed($c->output) and $c->output->isa("EDAMNoteStore::NoteMetadata")) {
+		print Dumper $c->output
+	} elsif(blessed($c->output)) {
 		print $c->_success_msg($c->output)
+	} elsif(ref $c->output eq "ARRAY") {
+		print "\033[1m";
+		printf " %-30s     %s$/$/", "Title", "GUID";
+		print "\033[m";
+		printf " %-30s  -  %s$/", $_->title, $_->guid for @{ $c->output }
 	} else {
 		print $c->output, $/
 	}
@@ -70,10 +79,50 @@ sub file :Help(Send files to evernote) {
 	$c->_create_note($c->stash->{auth_token}, join(", ", @files), "", @files)
 }
 
+sub search :Help(Search on evernote) {
+	my $c          = shift;
+	my $search_str = join " ", @{ $c->argv };
+
+	[ $c->_search($c->stash->{auth_token}, $search_str) ]
+}
+
+sub show :Help(Show a note from evernote by GUID) {
+	my $c    = shift;
+	my $guid = shift;
+
+	$c->_get_note($c->stash->{auth_token}, $guid)
+}
+
 *App::Rad::_success_msg = sub {
 	my $c    = shift;
 	my $note = shift;
 	sprintf "Successfully created a new note with GUID: %s\n", $note->guid;
+};
+
+*App::Rad::_get_note = sub {
+	my $c          = shift;
+	my $auth_token = shift;
+	my $guid       = shift;
+
+	my $enclient = ENClient->new;
+	die "Late version..." if not $enclient->check_version;
+
+	$enclient->auth_token($auth_token);
+
+	$enclient->get_note($guid)
+};
+
+*App::Rad::_search = sub {
+	my $c          = shift;
+	my $auth_token = shift;
+	my $search_str = shift;
+
+	my $enclient = ENClient->new;
+	die "Late version..." if not $enclient->check_version;
+
+	$enclient->auth_token($auth_token);
+
+	$enclient->search($search_str)
 };
 
 *App::Rad::_create_note = sub {

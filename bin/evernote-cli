@@ -41,10 +41,14 @@ sub post_process {
 	} elsif(blessed($c->output)) {
 		print $c->_success_msg($c->output)
 	} elsif(ref $c->output eq "ARRAY") {
-		print "\033[1m";
-		printf " %-30s     %s$/$/", "Title", "GUID";
-		print "\033[m";
-		printf " %-30s  -  %s$/", $_->title, $_->guid for @{ $c->output }
+		unless($c->options->{"guid-only"}) {
+			print "\033[1m";
+			printf " %-30s     %s$/$/", "Title", "GUID";
+			print "\033[m";
+			printf " %-30s  -  %s$/", $_->title, $_->guid for @{ $c->output }
+		} else {
+			print $_->guid, $/ for @{ $c->output }
+		}
 	} else {
 		print $c->output, $/
 	}

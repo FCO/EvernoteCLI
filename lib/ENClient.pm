@@ -154,8 +154,11 @@ sub search {
 	$spec->includeTitle(1);
 
 	$self->note_filter->words($search_str);
-	my $notes = $self->note_store->findNotesMetadata($self->auth_token, $self->note_filter, scalar(@notes), 10, $spec);
-	push @notes, @{ $notes->notes } while $notes->totalNotes > @notes;
+	my $notes;
+	do{
+		$notes = $self->note_store->findNotesMetadata($self->auth_token, $self->note_filter, scalar(@notes), 10, $spec);
+		push @notes, @{ $notes->notes } 
+	} while $notes->totalNotes > @notes;
 	@notes
 }
 

@@ -15,6 +15,7 @@ use HTML::Entities;
 use HTML::Escape qw/escape_html/;
 use MIME::Types;
 use ENResource;
+use Data::Printer;
 
 sub setup {
 	my $c = shift;
@@ -29,23 +30,28 @@ sub setup {
 	$c->load_config("$home/.evernoteclirc");
 	die "Please, get a auth token on https://sandbox.evernote.com/api/DeveloperToken.action (if you want to test on a sandbox) and fill the auth_token field on your conf file." unless exists $c->config->{auth_token};
 	$c->stash->{auth_token} = $c->config->{auth_token};
+	$c->stash->{"guid-only"} = scalar grep {/guid-only/} @ARGV;
+	$c->stash->{"dump-note"} = scalar grep {/dump-note/} @ARGV;
 }
 
 sub post_process {
 	my $c = shift;
 	if(blessed($c->output) and $c->output->isa("EDAMTypes::Note")) {
-		#print Dumper $c->output;
-		printf "  %-30s:\t%s$/", $_, $c->output->{$_} for qw/guid created title/;
-		print  "$/content:$/";
-		print  $c->output->{content}, $/, $/
+		if($c->stash->{"dump-note"}) {
+			p $c->output;
+		} else {
+			printf "  %-40s:\t%s$/", $_, $c->output->{$_} for qw/guid created title/;
+			print  "$/content:$/";
+			print  $c->output->{content}, $/, $/
+		}
 	} elsif(blessed($c->output)) {
 		print $c->_success_msg($c->output)
 	} elsif(ref $c->output eq "ARRAY") {
-		unless($c->options->{"guid-only"}) {
+		unless($c->stash->{"guid-only"}) {
 			print "\033[1m";
-			printf " %-30s     %s$/$/", "Title", "GUID";
+			printf " %-40s     %s$/$/", "Title", "GUID";
 			print "\033[m";
-			printf " %-30s  -  %s$/", $_->title, $_->guid for @{ $c->output }
+			printf " %-40s  -  %s$/", $_->title, $_->guid for @{ $c->output }
 		} else {
 			print $_->guid, $/ for @{ $c->output }
 		}
@@ -88,14 +94,14 @@ sub file :Help(Send files to evernote) {
 
 sub search :Help(Search on evernote) {
 	my $c          = shift;
-	my $search_str = join " ", @{ $c->argv };
+	my $search_str = join " ", grep {!/guid-only/} @{ $c->argv };
 
 	[ $c->_search($c->stash->{auth_token}, $search_str) ]
 }
 
 sub show :Help(Show a note from evernote by GUID) {
 	my $c    = shift;
-	my $guid = shift @{ $c->argv };
+	my $guid = (grep({!/dump-note/} @{ $c->argv }))[0];
 
 	$c->_get_note($c->stash->{auth_token}, $guid)
 }
